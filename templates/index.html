@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vocab Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Vocab Generator</h1>
+        <p>Upload up to 8 images or PDFs. The AI will analyze them and generate a minimum of 15 vocabulary terms formatted for your code!</p>
+        
+        <div class="upload-section">
+            <!-- Notice the 'multiple' attribute! -->
+            <input type="file" id="fileInput" accept=".pdf, .png, .jpg, .jpeg" multiple />
+            
+            <div id="fileListPreview" class="file-list"></div>
+            
+            <button id="generateBtn">Generate Vocab</button>
+            <div id="loading" style="display: none;">Analyzing documents... Please wait.</div>
+        </div>
+
+        <div class="output-section">
+            <textarea id="outputText" placeholder="Your formatted vocab array and list will appear here..." readonly></textarea>
+            <button id="copyBtn">Copy Text</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
