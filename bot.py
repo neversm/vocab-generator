@@ -2,9 +2,7 @@ import os
 import io
 import base64
 import threading
-import smtplib
 from datetime import date
-from email.message import EmailMessage
 
 import requests
 import fitz  # PyMuPDF
@@ -15,12 +13,17 @@ from openai import OpenAI
 # ------------------------------------------------------------------
 # Config — all pulled from Render environment variables
 # ------------------------------------------------------------------
-GITHUB_TOKEN       = os.environ["GITHUB_TOKEN"]
-TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
-WEBHOOK_SECRET     = os.environ.get("WEBHOOK_SECRET", "changeme")
-GMAIL_ADDRESS      = os.environ["GMAIL_ADDRESS"]
-GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-RECIPIENT_EMAIL    = os.environ.get("RECIPIENT_EMAIL", GMAIL_ADDRESS)
+GITHUB_TOKEN        = os.environ["GITHUB_TOKEN"]
+TELEGRAM_TOKEN      = os.environ["TELEGRAM_BOT_TOKEN"]
+WEBHOOK_SECRET      = os.environ.get("WEBHOOK_SECRET", "changeme")
+
+# --- Email via Resend (HTTPS API — works on Render's free tier) ---
+RESEND_API_KEY      = os.environ["RESEND_API_KEY"]
+# When using the free test sender, RECIPIENT_EMAIL MUST be the email you
+# signed up to Resend with. Verify your own domain to send elsewhere.
+RECIPIENT_EMAIL     = os.environ["RECIPIENT_EMAIL"]
+SENDER_EMAIL        = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # auto-set by Render
 
 MODEL  = "gpt-4o"
@@ -30,8 +33,7 @@ TG_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 # Access control
 # ------------------------------------------------------------------
 # Lock the bot to your own Telegram account. Message @userinfobot to get
-# your numeric chat ID, then put it here. Leave the set EMPTY ( = set() )
-# to allow anyone (not recommended).
+# your numeric chat ID, then put it here. Leave EMPTY ( = set() ) to allow anyone.
 ALLOWED_CHAT_IDS = {6016323640}   # <-- REPLACE 123456789 with your chat ID
 
 # Cap how many generations can run per day (protects your free quota).
@@ -98,7 +100,7 @@ def tg_download(file_path):
     return requests.get(url).content
 
 # ------------------------------------------------------------------
-# Core logic (mirrors your original app.py)
+# Core logic
 # ------------------------------------------------------------------
 def file_to_base64_images(file_bytes, filename):
     images = []
@@ -143,14 +145,20 @@ def generate_vocab(base64_images):
     return out.strip()
 
 def send_email(subject, body):
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = GMAIL_ADDRESS
-    msg["To"] = RECIPIENT_EMAIL
-    msg.set_content(body)
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
+    """Send via Resend's HTTPS API (port 443) — not SMTP, so it works on free Render."""
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+        json={
+            "from": SENDER_EMAIL,
+            "to": [RECIPIENT_EMAIL],
+            "subject": subject,
+            "text": body,
+        },
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Email send failed ({resp.status_code}): {resp.text}")
 
 # ------------------------------------------------------------------
 # Background worker — keeps the webhook response instant
@@ -185,7 +193,6 @@ def webhook():
 
     chat_id = message["chat"]["id"]
 
-    # Reject anyone not on the allowlist
     if not is_allowed(chat_id):
         return jsonify(ok=True)
 
