@@ -20,12 +20,42 @@ body {
 h1 { margin-top: 0; color: #2c3e50; }
 p { color: #666; margin-bottom: 20px; }
 
+label { color: #2c3e50; font-size: 14px; }
+
 .upload-section, .output-section {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
     margin-bottom: 25px;
 }
+
+.topic-input {
+    width: 100%;
+    min-height: 70px;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #aaa;
+    font-size: 13px;
+    font-weight: bold;
+    margin: 4px 0;
+}
+.divider::before, .divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #e0e0e0;
+}
+.divider span { padding: 0 12px; }
 
 input[type="file"] {
     padding: 10px;
@@ -41,7 +71,7 @@ input[type="file"] {
     font-size: 14px;
     color: #495057;
     border: 1px solid #e9ecef;
-    display: none; /* Hidden until files are selected */
+    display: none;
 }
 
 button {
@@ -64,13 +94,13 @@ button:disabled { background-color: #a5cdeb; cursor: not-allowed; }
     text-align: center;
 }
 
-textarea {
+textarea#outputText {
     width: 100%;
-    height: 350px; /* Made taller to fit the array and list */
+    height: 350px;
     padding: 10px;
     border-radius: 6px;
     border: 1px solid #ccc;
-    font-family: monospace; /* Monospace is better for looking at code! */
+    font-family: monospace;
     font-size: 14px;
     resize: vertical;
     box-sizing: border-box;
