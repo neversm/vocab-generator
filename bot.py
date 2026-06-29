@@ -32,7 +32,7 @@ TG_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 # Lock the bot to your own Telegram account. Message @userinfobot to get
 # your numeric chat ID, then put it here. Leave the set EMPTY ( = set() )
 # to allow anyone (not recommended).
-ALLOWED_CHAT_IDS = {123456789}   # <-- REPLACE 123456789 with your chat ID
+ALLOWED_CHAT_IDS = {6016323640}   # <-- REPLACE 123456789 with your chat ID
 
 # Cap how many generations can run per day (protects your free quota).
 DAILY_LIMIT = 10
