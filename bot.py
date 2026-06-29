@@ -58,9 +58,9 @@ def under_daily_limit():
         _usage["count"] += 1
         return True
 
-PROMPT = """
-Observe the provided images/documents. Identify the core topic, book, or subject matter.
-Generate a minimum of 15 vocabulary terms and their definitions related to this upload.
+# The constant formatting rules — used no matter the input type.
+BASE_RULES = """
+Generate a minimum of 15 vocabulary terms and their definitions related to this subject.
 
 CRITICAL FORMATTING RULES:
 1. You MUST use "question" for the definition and "term" for the vocabulary word.
@@ -83,7 +83,15 @@ TERM2
 TERM3
 
 Do not add any greetings, explanations, or extra text. Only provide Part 1 and Part 2.
-""".strip()
+"""
+
+HELP_TEXT = (
+    "Send me either:\n"
+    "\u2022 a PDF or image (PNG/JPG), or\n"
+    "\u2022 a plain text topic, words, or phrases\n\n"
+    "...and I'll email you 15+ vocab terms formatted for your code.\n"
+    "Tip: send images as a *file* (not a photo) for the sharpest OCR."
+)
 
 # ------------------------------------------------------------------
 # Telegram helpers
@@ -125,8 +133,24 @@ def file_to_base64_images(file_bytes, filename):
 
     return images
 
-def generate_vocab(base64_images):
-    content = [{"type": "text", "text": PROMPT}]
+def generate_vocab(base64_images=None, topic=None):
+    """Generate vocab from images, a typed topic, or both."""
+    base64_images = base64_images or []
+
+    if topic and base64_images:
+        intro = (
+            f'The user provided this topic/keywords: "{topic}". '
+            f'Also observe the provided images/documents. '
+            f'Combine both to identify the subject matter.'
+        )
+    elif topic:
+        intro = f'Generate vocabulary based on this topic/words/phrases provided by the user: "{topic}".'
+    else:
+        intro = "Observe the provided images/documents. Identify the core topic, book, or subject matter."
+
+    prompt_text = (intro + "\n" + BASE_RULES).strip()
+
+    content = [{"type": "text", "text": prompt_text}]
     for b64 in base64_images:
         content.append({
             "type": "image_url",
@@ -161,21 +185,32 @@ def send_email(subject, body):
         raise RuntimeError(f"Email send failed ({resp.status_code}): {resp.text}")
 
 # ------------------------------------------------------------------
-# Background worker — keeps the webhook response instant
+# Background workers — keep the webhook response instant
 # ------------------------------------------------------------------
+def generate_and_email(chat_id, images, topic, label):
+    try:
+        vocab = generate_vocab(images, topic)
+        send_email(f"Vocab: {label}", vocab)
+        tg_send_message(chat_id, f"\u2705 Done \u2014 vocab for \u201c{label}\u201d sent to your email.")
+    except Exception as e:
+        tg_send_message(chat_id, f"\u26a0\ufe0f Error: {e}")
+
 def process_file(chat_id, file_id, filename):
     try:
         path = tg_get_file_path(file_id)
         data = tg_download(path)
         images = file_to_base64_images(data, filename)
-        if not images:
-            tg_send_message(chat_id, "Couldn't read any pages/images from that file.")
-            return
-        vocab = generate_vocab(images)
-        send_email(f"Vocab: {filename}", vocab)
-        tg_send_message(chat_id, f"\u2705 Done \u2014 vocab for \u201c{filename}\u201d sent to your email.")
     except Exception as e:
         tg_send_message(chat_id, f"\u26a0\ufe0f Error: {e}")
+        return
+    if not images:
+        tg_send_message(chat_id, "Couldn't read any pages/images from that file.")
+        return
+    generate_and_email(chat_id, images, None, filename)
+
+def process_topic(chat_id, topic):
+    label = topic if len(topic) <= 60 else topic[:57] + "..."
+    generate_and_email(chat_id, None, topic, label)
 
 # ------------------------------------------------------------------
 # Routes
@@ -196,30 +231,41 @@ def webhook():
     if not is_allowed(chat_id):
         return jsonify(ok=True)
 
+    # ---- File path: PDF or image ----
     file_id, filename = None, "upload"
-
-    if "document" in message:                       # PDF or image sent as a file
+    if "document" in message:
         file_id = message["document"]["file_id"]
         filename = message["document"].get("file_name", "upload.pdf")
-    elif "photo" in message:                         # image sent as a photo (compressed)
+    elif "photo" in message:
         file_id = message["photo"][-1]["file_id"]    # [-1] = highest resolution
         filename = "photo.jpg"
-    elif "text" in message:
-        tg_send_message(
-            chat_id,
-            "Send me a PDF or image (PNG/JPG) and I'll email you the vocab.\n"
-            "Tip: send images as a *file* (not a photo) for the sharpest OCR."
-        )
-        return jsonify(ok=True)
 
     if file_id:
         if not under_daily_limit():
             tg_send_message(chat_id, f"Daily limit of {DAILY_LIMIT} reached. Try again tomorrow.")
             return jsonify(ok=True)
         tg_send_message(chat_id, "\U0001f4e5 Got it \u2014 analyzing and generating vocab\u2026")
-        threading.Thread(
-            target=process_file, args=(chat_id, file_id, filename), daemon=True
-        ).start()
+        threading.Thread(target=process_file, args=(chat_id, file_id, filename), daemon=True).start()
+        return jsonify(ok=True)
+
+    # ---- Text path: command vs. topic ----
+    if "text" in message:
+        text = message["text"].strip()
+
+        if not text:
+            return jsonify(ok=True)
+
+        if text.startswith("/"):                 # /start, /help, etc.
+            tg_send_message(chat_id, HELP_TEXT)
+            return jsonify(ok=True)
+
+        # Otherwise treat the message as a topic to generate vocab from
+        if not under_daily_limit():
+            tg_send_message(chat_id, f"Daily limit of {DAILY_LIMIT} reached. Try again tomorrow.")
+            return jsonify(ok=True)
+        tg_send_message(chat_id, "\U0001f4dd Got it \u2014 generating vocab from your topic\u2026")
+        threading.Thread(target=process_topic, args=(chat_id, text), daemon=True).start()
+        return jsonify(ok=True)
 
     return jsonify(ok=True)
 
